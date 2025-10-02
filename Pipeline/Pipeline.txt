@@ -1,0 +1,127 @@
+        Pipeline Nhận Diện và Chuyển Đổi Ký Hiệu Tay Thành Văn Bản
+
+I. Giai đoạn 1: Thu thập và Tiền xử lý Dữ liệu Keypoint
+
+    * Mục tiêu: 
+            Giai đoạn này sẽ tập trung giảm số chiều dữ liệu cần xử lý bằng cách sử dụng MediaPipe Hands
+            để lấy ra tọa độ của 21 khớp tay chính trên bàn tay và xử lý chúng thay vì xử lý toàn khung hình.
+
+    1.1. Bước 1: Thu thập Dữ liệu Video
+       - Ghi lại video các cử chỉ tay động (chuỗi khung hình) => sẽ triển khai live time khi hoàn thành.
+       - Tương ứng với các ký hiệu hoặc từ vựng mục tiêu.
+
+    1.2. Bước 2: Ước tính Keypoint  
+       - Sử dụng mô hình đã được huấn luyện trước (MediaPipe Hands của Google giới thiệu năm 2020).
+       - Xử lý từng khung hình video.
+       - Phát hiện và trích xuất tọa độ 3D của 21 khớp tay chính trên bàn tay.
+       - Ngoài việc giúp làm giảm số chiều cần xử lý thì nó còn giúp loại bỏ nhiễu nền.
+
+    1.3. Bước 3: Chuẩn hóa Tọa độ
+       Tọa độ Keypoint được chuẩn hóa để loại bỏ sự phụ thuộc của mô hình vào vị trí và 
+       kích thước bàn tay trên khung hình:
+
+       a) Dịch chuyển: 
+          Có 2 hướng là đặt khớp cổ tay hoặc khớp trung tâm (lòng bàn tay) về gốc tọa độ (0,0,0).
+
+       b) Chia tỷ lệ: 
+          Chia tỷ lệ các tọa độ còn lại dựa trên một khoảng cách cố định 
+          (khoảng cách từ cổ tay đến khớp ngón giữa) để đảm bảo mô hình 
+          nhận diện cử chỉ bất kể kích thước bàn tay
+
+    Đầu ra Giai đoạn 1: 
+        Một chuỗi các vector Keypoint đã được chuẩn hóa, đại diện cho chuyển động 
+        của cử chỉ theo thời gian.
+
+
+II. Giai đoạn 2: Kiến trúc Lõi của Mô hình Hóa Chuỗi (Transformer)
+
+    Mục tiêu:
+        Chuỗi Keypoint của từng khung hình được đưa vào mô hình Transformer để học mối quan hệ phức tạp 
+        và phụ thuộc dài hạn trong chuỗi thời gian của hành động.
+
+    2.1. Bước 1: Mã hóa Vị trí (Positional Encoding)
+       - Thêm thông tin về thứ tự và vị trí thời gian của mỗi khung hình 
+         (vector Keypoint) vào dữ liệu đầu vào.
+       - Điều này là cần thiết vì cơ chế Tự Chú ý (Self-Attention) của Transformer 
+         không xử lý thông tin tuần tự một cách tự nhiên.
+
+    2.2. Bước 2: Tầng Transformer Encoder
+       Dữ liệu được đưa qua nhiều tầng Transformer Encoder (Lớp mã hóa):
+
+       a) Cơ chế Tự Chú ý (Self-Attention): 
+          - Cho phép mô hình tính toán trọng số quan trọng giữa bất kỳ hai khung hình 
+            nào trong chuỗi, bất kể khoảng cách thời gian của chúng.
+          - Giải quyết hiệu quả vấn đề "quên" thông tin đầu chuỗi (mất gradient) 
+            thường gặp ở RNN/LSTM cũng là lý do chọn Transformer để làm kiến trúc lõi cho mô hình này.
+
+       b) Tính Song song: 
+          Kiến trúc Transformer xử lý toàn bộ chuỗi đồng thời, tận dụng tối đa khả năng của GPU từ đó giúp tăng tốc độ 
+          huấn luyện và dự đoán đáng kể.
+
+       c) Regularization: 
+          Áp dụng Dropout Ngược (Inverted Dropout) trong các tầng Encoder để ngăn 
+          ngừa quá khớp (overfitting), tăng tính tổng quát hóa 
+          và đồng thời làm đơn giản quá trình khi triển khai dự đoán thực tế khi Dropout bị tắt.
+
+    Đầu ra Giai đoạn 2: 
+        Một chuỗi các vector biểu diễn ngữ cảnh (Contextualized Features) đã được 
+        mã hóa cho từng khung hình.
+
+III. Giai đoạn 3: Phân loại và Tối ưu hóa Hàm Loss
+
+    Mục tiêu:
+        Bước này chuyển đổi các biểu diễn ngữ cảnh thành xác suất của các ký hiệu 
+        mà mô hình đã được học trước đó từ đó đưa ra ý nghĩa của kí hiệu tương ứng.
+
+    3.1. Bước 1: Tầng Tuyến tính (Linear Classifier)
+       - Áp dụng một tầng Fully Connected lên các vector ngữ cảnh nhận được từ bước 2.
+       - Ánh xạ chúng thành vector xác suất lớp (class probability) tương ứng với 
+         số lượng ký hiệu cần nhận diện mà mô hình đã được học.
+
+    3.2. Bước 2: Hàm Loss CTC (Connectionist Temporal Classification)
+       Thay vì sử dụng Cross-Entropy truyền thống, CTC Loss được sử dụng để tối ưu 
+       hóa việc nhận diện chuỗi ký hiệu.
+
+       Ưu điểm:
+       - CTC cho phép mô hình dự đoán chuỗi ký hiệu chính xác mà không yêu cầu 
+         căn chỉnh (alignment) cụ thể giữa khung hình video và ký hiệu được gán nhãn.
+       - Xử lý các chuỗi lặp lại hoặc các khoảng trống trong cử chỉ một cách tự nhiên.
+
+    Đầu ra Giai đoạn 3: 
+        Một ma trận xác suất (logits) cho từng ký hiệu tại mỗi bước thời gian.
+
+IV. Giai đoạn 4: Hậu xử lý và Giải mã Chuỗi
+
+    Mục tiêu:
+        Giai đoạn cuối cùng là chuyển đổi ma trận xác suất thành chuỗi văn bản có ý nghĩa.
+
+    4.1. Bước 1: Giải mã Chuỗi (Decoding)
+       - Sử dụng thuật toán giải mã CTC để tìm ra chuỗi ký hiệu có xác suất cao nhất
+
+    4.2. Bước 2: Beam Search Decoding
+       - Là thuật toán được ưu tiên vì nó tìm kiếm hiệu quả qua nhiều đường dự đoán 
+         khả thi
+       - Giúp giảm thiểu lỗi từ việc dự đoán lặp lại hoặc nhầm lẫn ký hiệu
+
+    4.3. Bước 3: Chuyển đổi Văn bản
+       - Chuỗi ký hiệu đã giải mã được chuyển đổi thành văn bản người đọc có thể 
+         hiểu được
+
+    Đầu ra Giai đoạn 4: 
+        Chuỗi văn bản tương ứng với cử chỉ tay đã được thực hiện.
+
+Các yếu tố cần chú ý để tối ưu hóa hoặc cải thiện để tăng thêm tốc độ dự đoán:
+ - Giai đoạn 1: vì đầu vào sẽ là hàng loạt khung hình trên giây đưa vào model => Xảy ra hiện tượng thắt cổ chai lớn.
+        + Giải pháp tối ưu nhất hiện tại là MediaPipe Hands một mô hình học sâu nhỏ gọn có thể đạt tới từ 50 FPS trở lên cho việc ước tính tư thế tay.
+        + Có thể tối ưu để việc tìm ra tay nhanh hơn như do tay thường nằm ở vị trí dưới của một video hơn nên có thể
+        ta sẽ dùng sliding window từ dưới lên thay vì từ trên xuống.
+ - Giai đoạn 2: 
+        + Nhờ có giai đoạn 1 lúc này mô hình chỉ phải xử lý 63 chiều (21 khớp * 3 chiều) thay vì phải xử lý toàn bộ khung hình.
+        + Có thể cân nhắc sử dụng mô hình Transformer nhỏ gọn như các phiên bản Tiny hay Mini của Transformer.
+        với số lượng hidden layer và hidden dimension thấp hơn. Điều này vẫn sẽ giữ được sức mạng của cơ chế Self-Attention mà còn giảm được thời gian tính toán.
+        + Áp dụng thêm kĩ thuật decoding tự hồi quy (Autoregressive Decoding) hoặc kiến trúc Streamable Transformer để giảm chi phí tính toán khi chuỗi đầu vào Keypoint ngày càng dài.
+ - Khi triển khai:
+        + Vectorization: sử dụng các thư viện được tối ưu hóa cao phù hợp như là NumPy, TensorFlow, PyTorch.
+        + Chuyển đổi mô hình qua định dạng hiệu suất cao ONNX để tối ưu hóa việc chạy trên CPU và cả GPU.
+
+ - Vấn đề về chuyển đổi ngữ pháp: tìm hiểu thêm về mô hình Seq2Seq để có thể dịch câu có ngữ pháp chính xác.
