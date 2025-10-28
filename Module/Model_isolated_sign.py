@@ -1,12 +1,12 @@
 import tensorflow as tf
 
 def build_isolated_sign_model(
-        num_keypoints=42,  # 21 keypoints x 2 tay
-        feature_dim=128,
+        num_keypoints=128,  # 21 keypoints x 2 tay
+        feature_dim=256,
         num_heads=8,
         num_classes=30,
         dropout_rate=0.3,
-        max_frames=64
+        max_frames=180
 ):
     inputs = tf.keras.Input(shape=(max_frames, num_keypoints), name="keypoints_input")
 
