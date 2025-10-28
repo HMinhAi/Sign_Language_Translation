@@ -4,11 +4,9 @@ import random
 import numpy as np
 import shutil
 
-print("\n--- BẮT ĐẦU QUÁ TRÌNH VIDEO AUGMENTATION (GIỮ GỐC + GỘP VÀ ĐỔI TÊN) ---")
+print("\n--- Bắt đầu quá trình Video Augmentation ---")
 
-# ==============================================================================
-# CÁC HÀM AUGMENT VIDEO
-# ==============================================================================
+# Các hàm augment Videos
 
 def change_speed(video_frames, speed_factor):
     frame_count = len(video_frames)
@@ -37,21 +35,17 @@ def random_middle(video_frames, keep_ratio=0.85):
     start = random.randint(0, n - keep)
     return video_frames[start:start + keep]
 
-# ==============================================================================
-# DANH SÁCH 6 KIỂU AUGMENT
-# ==============================================================================
+# Danh sách 6 kiểu Augment
 augmentations = [
-    ("Fast", lambda f: change_speed(f, random.uniform(1.15, 1.3))),
-    ("Slow", lambda f: change_speed(f, random.uniform(0.7, 0.85))),
-    ("RandomCrop", lambda f: random_crop(f, random.uniform(0.05, 0.1))),
-    ("RandomMiddle", lambda f: random_middle(f, random.uniform(0.8, 0.9))),
-    ("TrimStart", lambda f: trim_start(f, random.uniform(0.1, 0.15))),
-    ("TrimEnd", lambda f: trim_end(f, random.uniform(0.1, 0.15)))
+    ("Fast", lambda f: change_speed(f, random.uniform(1.1, 1.2))),
+    ("Slow", lambda f: change_speed(f, random.uniform(0.8, 0.9)))
+    # ("RandomCrop", lambda f: random_crop(f, random.uniform(0.05, 0.1))),
+    # ("RandomMiddle", lambda f: random_middle(f, random.uniform(0.8, 0.9))),
+    # ("TrimStart", lambda f: trim_start(f, random.uniform(0.1, 0.15))),
+    # ("TrimEnd", lambda f: trim_end(f, random.uniform(0.1, 0.15)))
 ]
 
-# ==============================================================================
-# HÀM XỬ LÝ CHÍNH
-# ==============================================================================
+# Hàm chính
 
 def augment_videos_in_folder(root_dir, delete_aug_folder=True):
     """Tạo augment, copy sang thư mục nhãn, và đổi tên toàn bộ."""
@@ -84,7 +78,7 @@ def augment_videos_in_folder(root_dir, delete_aug_folder=True):
             cap.release()
 
             if len(frames) < 5:
-                print(f"⚠️  Bỏ qua {file_name} (video quá ngắn)")
+                print(f"Bỏ qua {file_name} (video quá ngắn)")
                 continue
 
             # Chọn ngẫu nhiên 1 kiểu augment
@@ -138,9 +132,7 @@ def rename_videos(folder_path):
         os.rename(old_path, new_path)
     print(f"Đã đổi tên {len(video_files)} file trong '{os.path.basename(folder_path)}'.")
 
-# ==============================================================================
-# CHẠY SCRIPT
-# ==============================================================================
+# Run
 
 if __name__ == "__main__":
     target_folder = input("Nhập đường dẫn thư mục cần augment (vd: data/train): ").strip()

@@ -2,7 +2,7 @@ import tensorflow as tf
 
 def build_ctc_sign_model(
         num_keypoints=42,
-        feature_dim=128,
+        feature_dim=256,
         num_heads=8,
         vocab_size=30,   # số nhãn ký hiệu
         dropout_rate=0.3,

@@ -3,3 +3,12 @@
 *README_data.md
 *.jpg
 Data
+Data - Origin
+Data_Keypoints
+logs
+.venv
+models
+.h5
+.npy
+.txt
+__pycache__
