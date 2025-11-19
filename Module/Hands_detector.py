@@ -99,7 +99,7 @@ video_path = r"C:\Users\ming2\Documents\FPT_University\Semester 5\DPL302m\Projec
 # Or use camera (0 for default camera)
 # video_path = 0
 
-cap = cv2.VideoCapture(video_path)
+cap = cv2.VideoCapture(0)
 
 # Check if video opened successfully
 if not cap.isOpened():
