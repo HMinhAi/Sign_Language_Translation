@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 def build_ctc_sign_model(
-        num_keypoints=42,
+        num_keypoints=141,
         feature_dim=256,
         num_heads=8,
         vocab_size=30,   # số nhãn ký hiệu
@@ -17,7 +17,7 @@ def build_ctc_sign_model(
     x = x + pos_encoding
 
     # Transformer Encoder
-    for _ in range(2):
+    for _ in range(4):
         attn_output = tf.keras.layers.MultiHeadAttention(
             num_heads=num_heads, key_dim=feature_dim // num_heads)(x, x)
         attn_output = tf.keras.layers.Dropout(dropout_rate)(attn_output)

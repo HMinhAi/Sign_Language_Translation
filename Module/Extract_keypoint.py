@@ -4,96 +4,95 @@ import numpy as np
 import mediapipe as mp
 from tqdm import tqdm
 
-# Cấu hình MediaPipe
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2)
+# Cấu hình MediaPipe Holistic
+mp_holistic = mp.solutions.holistic
 
-# Hàm trích keypoints 3D ổn định cho 2 tay
-def extract_dual_hand_keypoints_3d(frame):
-    """
-    Trích keypoints 3D ổn định thứ tự trái/phải.
-    Mỗi frame -> vector (63 + 63 + 2) = 128 chiều
-    """
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = hands.process(frame_rgb)
-
-    left_hand = np.zeros(63)   # 21 keypoints × (x, y, z)
-    right_hand = np.zeros(63)
-    left_mask, right_mask = 0.0, 0.0
-
-    if results.multi_hand_landmarks and results.multi_handedness:
-        for idx, handedness in enumerate(results.multi_handedness):
-            label = handedness.classification[0].label  # 'Left' hoặc 'Right'
-            landmarks = results.multi_hand_landmarks[idx]
-
-            coords = []
-            for lm in landmarks.landmark:
-                coords.extend([lm.x, lm.y, lm.z])
-
-            if label == 'Left':
-                left_hand = np.array(coords)
-                left_mask = 1.0
+# Hàm trích xuất keypoint compact 
+def extract_holistic_keypoints_compact(results):
+    keypoints = []
+    # 1. Left Hand (63 features)
+    if results.left_hand_landmarks:
+        for landmark in results.left_hand_landmarks.landmark:
+            keypoints.extend([landmark.x, landmark.y, landmark.z])
+    else:
+        keypoints.extend([0.0] * 63)
+    # 2. Right Hand (63 features)
+    if results.right_hand_landmarks:
+        for landmark in results.right_hand_landmarks.landmark:
+            keypoints.extend([landmark.x, landmark.y, landmark.z])
+    else:
+        keypoints.extend([0.0] * 63)
+    # 3. Upper Body Pose (chỉ lấy vai, khuỷu tay)
+    upper_body_indices = [11, 12, 13, 14]
+    if results.pose_landmarks:
+        pose_landmarks = results.pose_landmarks.landmark
+        for idx in upper_body_indices:
+            if idx < len(pose_landmarks):
+                landmark = pose_landmarks[idx]
+                keypoints.extend([landmark.x, landmark.y, landmark.z])
             else:
-                right_hand = np.array(coords)
-                right_mask = 1.0
+                keypoints.extend([0.0] * 12)
+    else:
+        keypoints.extend([0.0] * (len(upper_body_indices)*4))
+    # 4. Face Key Points - chỉ lấy điểm trung tâm mặt (landmark 0)
+    if results.face_landmarks:
+        face_landmarks = results.face_landmarks.landmark
+        if len(face_landmarks) > 0:
+            landmark = face_landmarks[0]
+            keypoints.extend([landmark.x, landmark.y, landmark.z])
+        else:
+            keypoints.extend([0.0] * 3)
+    else:
+        keypoints.extend([0.0] * 3)
+    
+    print(len(keypoints))
+    return np.array(keypoints, dtype=np.float32)
 
-    # Ghép 2 tay + mask => vector 128 chiều
-    return np.concatenate([left_hand, right_hand, [left_mask, right_mask]])
 
-# Hàm xử lý toàn bộ dataset
-def process_dataset(input_root="Data", output_root="Data_keypoints"):
-    """
-    Duyệt toàn bộ Data/{train,val,test}/{label}/*.mp4
-    -> Trích keypoints 3D + mask -> lưu .npy cùng cấu trúc nhãn.
-    """
+# Hàm xử lý toàn bộ dataset với holistic keypoint compact
+def process_dataset(input_root="Data", output_root="test"):
     os.makedirs(output_root, exist_ok=True)
-
     for split in ["train", "val", "test"]:
         split_dir = os.path.join(input_root, split)
         if not os.path.exists(split_dir):
             print(f"Bỏ qua '{split}' (không tồn tại).")
             continue
-
         print(f"\nĐang xử lý tập '{split}' ...")
         output_split_dir = os.path.join(output_root, split)
         os.makedirs(output_split_dir, exist_ok=True)
-
         labels = [d for d in os.listdir(split_dir) if os.path.isdir(os.path.join(split_dir, d))]
         for label in tqdm(labels, desc=f"Đang xử lý nhãn ({split})"):
             input_label_dir = os.path.join(split_dir, label)
             output_label_dir = os.path.join(output_split_dir, label)
             os.makedirs(output_label_dir, exist_ok=True)
-
-            for video_name in os.listdir(input_label_dir):
-                if not video_name.endswith(".mp4"):
-                    continue
-
+            videos = [v for v in os.listdir(input_label_dir) if v.endswith(".mp4")]
+            for video_name in tqdm(videos, desc=f"{label}", leave=False):
                 video_path = os.path.join(input_label_dir, video_name)
                 save_path = os.path.join(output_label_dir, video_name.replace(".mp4", ".npy"))
-
                 cap = cv2.VideoCapture(video_path)
                 seq = []
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    keypoints = extract_dual_hand_keypoints_3d(frame)
-                    seq.append(keypoints)
+                with mp_holistic.Holistic(
+                    min_detection_confidence=0.5,
+                    min_tracking_confidence=0.5,
+                    model_complexity=1
+                ) as holistic:
+                    while True:
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
+                        image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        results = holistic.process(image_rgb)
+                        keypoints = extract_holistic_keypoints_compact(results)
+                        seq.append(keypoints)
                 cap.release()
-
                 if len(seq) == 0:
-                    print(f"Video rỗng hoặc không có tay: {video_name}")
+                    print(f"Video rỗng hoặc không có keypoint: {video_name}")
                     continue
-
                 seq = np.array(seq, dtype=np.float32)
                 np.save(save_path, seq)
-
         print(f"Hoàn tất tập '{split}' → lưu tại: {output_split_dir}")
 
-# CHẠY TRỰC TIẾP
 if __name__ == "__main__":
     input_root = input("Nhập thư mục dữ liệu gốc (vd: Data): ").strip()
-    output_root = input("Thư mục lưu keypoints (vd: Data_keypoints): ").strip()
-
-    process_dataset(input_root, output_root)
+    process_dataset(input_root)
     print("\nHoàn tất trích xuất keypoints!")

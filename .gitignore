@@ -11,4 +11,7 @@ models
 .h5
 .npy
 .txt
+Data_Keypoints_Seq
+Data_Keypoints_holistic
 __pycache__
+pytorch_cuda
